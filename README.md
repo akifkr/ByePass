@@ -78,4 +78,3 @@ ByePass, root istemeden, TLS el sıkışmasını ve düz HTTP başlıklarını c
 
 ---
 
-> **Not:** VirusTotal linki, o anki apk dosyasının hash'ine bağlı. Her yeni sürümde apk değiştiği için hash de değişir — yeni bir apk yayınlayınca VirusTotal'e tekrar yükleyip linki/rozeti güncellemen gerekir, yoksa link eski sürümü gösterir.
