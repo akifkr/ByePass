@@ -55,6 +55,7 @@ class TunnelService : VpnService() {
             proxy = LocalProxyServer(10808)
             proxy?.start()
 
+            // Android 10+ (API 29+) cihazlarda otomatik sistem proxy kurulumu
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val builder = this.Builder()
                     .setSession("ByePass")
@@ -65,9 +66,9 @@ class TunnelService : VpnService() {
 
                 builder.addDisallowedApplication(packageName)
                 vpnInterface = builder.establish()
-                log("Sistem HTTP proxy aktif edildi (Android 10+).")
+                log("Sistem proxy aktif edildi (Android 10+).")
             } else {
-                log("Proxy hazır. (Android 7-9: Wi-Fi proxy 127.0.0.1:10808 gereklidir).")
+                log("Proxy hazır (127.0.0.1:10808).")
             }
 
             _isRunning.value = true
