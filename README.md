@@ -9,6 +9,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%207.0%2B-blue?logo=android&logoColor=white)](https://github.com/akifkr/ByePass)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin%20100%25-7F52FF?logo=kotlin&logoColor=white)](https://github.com/akifkr/ByePass)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F67%20Clean-brightgreen?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/acaf39f580767172edfcdc0aa5e22923647a0bc2ea54c8a6c36bfcfafc7a1265/)
 
 [Download Latest APK](https://github.com/akifkr/ByePass/releases/latest) • [English](#-english) • [Türkçe](#-türkçe)
 
