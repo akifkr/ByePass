@@ -1,4 +1,6 @@
 <div align="center">
+  <img src="assets/logo.png" alt="ByePass" width="280">
+</div>
 
 # ByePass
 
