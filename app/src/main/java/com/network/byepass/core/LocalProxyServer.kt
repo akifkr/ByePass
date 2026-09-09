@@ -1,6 +1,7 @@
 package com.network.byepass.core
 
 import com.network.byepass.service.TunnelService
+import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.DatagramPacket
@@ -10,6 +11,7 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
+import java.net.URI
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -31,9 +33,11 @@ class LocalProxyServer(
             while (active) {
                 try {
                     val client = serverSocket?.accept() ?: break
-                    pool.execute { handle(client) }
+                    pool.execute { handleConnection(client) }
                 } catch (_: SocketException) {
                     break
+                } catch (_: Exception) {
+                    // Genel dinleyici hatası
                 }
             }
         }
@@ -41,36 +45,34 @@ class LocalProxyServer(
 
     fun stop() {
         active = false
-        try { serverSocket?.close() } catch (_: Exception) {}
+        closeQuietly(serverSocket)
         pool.shutdownNow()
     }
 
-    private fun handle(client: Socket) {
+    private fun handleConnection(client: Socket) {
         var upstream: Socket? = null
         try {
             client.tcpNoDelay = true
             val cin = client.getInputStream()
             val cout = client.getOutputStream()
 
-            val headerBuf = ByteArray(4096)
+            val headerBuf = ByteArray(8192)
             val n = cin.read(headerBuf)
             if (n <= 0) {
-                client.close()
+                closeQuietly(client)
                 return
             }
 
             val request = String(headerBuf, 0, n, Charsets.ISO_8859_1)
-            val firstLine = request.lines().firstOrNull() ?: ""
+            val firstLine = request.lines().firstOrNull()?.trim() ?: ""
 
             if (firstLine.startsWith("CONNECT ")) {
-                val hostPort = firstLine.split(" ")[1]
-                val targetHost = hostPort.split(":")[0]
-                val targetPort = hostPort.split(":").getOrNull(1)?.toIntOrNull() ?: 443
+                // --- HTTPS (CONNECT Tüneli) ---
+                val rawTarget = firstLine.split(" ").getOrNull(1) ?: return
+                val (targetHost, targetPort) = parseHostPort(rawTarget, defaultPort = 443)
 
-                TunnelService.log("İstek: $targetHost")
-
+                TunnelService.log("HTTPS İstek: $targetHost:$targetPort")
                 val targetIp = resolve(targetHost)
-                TunnelService.log("DNS: ${targetIp.hostAddress}")
 
                 upstream = Socket()
                 upstream.tcpNoDelay = true
@@ -82,44 +84,156 @@ class LocalProxyServer(
                 val uout = upstream.getOutputStream()
                 val uin = upstream.getInputStream()
 
-                val tlsBuf = ByteArray(8192)
-                val tlsLen = cin.read(tlsBuf)
-                if (tlsLen > 0) {
-                    val tlsData = tlsBuf.copyOf(tlsLen)
-                    if (DpiSplitter.isClientHello(tlsData)) {
-                        TunnelService.log("Bypass: $targetHost")
-                        DpiSplitter.forwardFragmented(tlsData, uout)
+                // İlk el sıkışma (TLS ClientHello) kontrolü
+                val handshakeBuf = ByteArray(8192)
+                val hLen = cin.read(handshakeBuf)
+                if (hLen > 0) {
+                    val data = handshakeBuf.copyOf(hLen)
+                    if (DpiSplitter.isClientHello(data)) {
+                        TunnelService.log("Bypass (TLS Parçalama): $targetHost")
+                        DpiSplitter.forwardFragmented(data, uout)
                     } else {
-                        uout.write(tlsData)
+                        uout.write(data)
                         uout.flush()
                     }
                 }
 
-                pipe(client, upstream, cin, uout, uin, cout)
+                pipeBidirectional(client, upstream, cin, cout, uin, uout)
+            } else if (DpiSplitter.isPlainHttp(headerBuf)) {
+                // --- Standart Düz HTTP İstekleri (GET, POST vs.) ---
+                val rawUrl = firstLine.split(" ").getOrNull(1) ?: return
+                val (targetHost, targetPort, relativePath) = parseHttpUrl(rawUrl, request)
+
+                TunnelService.log("HTTP İstek: $targetHost:$targetPort")
+                val targetIp = resolve(targetHost)
+
+                upstream = Socket()
+                upstream.tcpNoDelay = true
+                upstream.connect(InetSocketAddress(targetIp, targetPort), 5000)
+
+                val uout = upstream.getOutputStream()
+                val uin = upstream.getInputStream()
+
+                // İstek satırındaki mutlak URL'i göreli yola çevirip Host başlığını mutasyona uğratıyoruz
+                val method = firstLine.substringBefore(" ")
+                val protocol = firstLine.substringAfterLast(" ")
+                val rewrittenFirstLine = "$method $relativePath $protocol"
+                val lines = request.lines().toMutableList()
+                lines[0] = rewrittenFirstLine
+                val fullRawRequest = lines.joinToString("\r\n").toByteArray(Charsets.ISO_8859_1)
+
+                val mutatedPayload = DpiSplitter.mutateHttpHost(fullRawRequest)
+                TunnelService.log("Bypass (HTTP Host Mutasyonu): $targetHost")
+                DpiSplitter.forwardFragmented(mutatedPayload, uout)
+
+                pipeBidirectional(client, upstream, cin, cout, uin, uout)
+            } else {
+                // Tanınmayan protokol
+                closeQuietly(client)
             }
         } catch (e: Exception) {
             TunnelService.log("Hata: ${e.message}")
         } finally {
-            try { client.close() } catch (_: Exception) {}
-            try { upstream?.close() } catch (_: Exception) {}
+            closeQuietly(client)
+            closeQuietly(upstream)
         }
+    }
+
+    private fun parseHostPort(raw: String, defaultPort: Int): Pair<String, Int> {
+        val clean = raw.trim()
+        return if (clean.startsWith("[")) {
+            val endBracket = clean.indexOf(']')
+            val host = clean.substring(1, endBracket)
+            val portPart = clean.substring(endBracket + 1)
+            val port = if (portPart.startsWith(":")) portPart.substring(1).toIntOrNull() ?: defaultPort else defaultPort
+            Pair(host, port)
+        } else {
+            val host = clean.substringBeforeLast(":")
+            val port = clean.substringAfterLast(":", defaultPort.toString()).toIntOrNull() ?: defaultPort
+            Pair(host, port)
+        }
+    }
+
+    private fun parseHttpUrl(rawUrl: String, fullHeader: String): Triple<String, Int, String> {
+        return try {
+            val uri = URI(rawUrl)
+            if (uri.host != null) {
+                val port = if (uri.port != -1) uri.port else 80
+                val path = if (uri.rawPath.isNullOrEmpty()) "/" else uri.rawPath + (if (uri.rawQuery != null) "?${uri.rawQuery}" else "")
+                Triple(uri.host, port, path)
+            } else {
+                throw IllegalArgumentException()
+            }
+        } catch (_: Exception) {
+            // URL parse edilemezse Host: başlığından al
+            val hostLine = fullHeader.lines().firstOrNull { it.startsWith("Host:", ignoreCase = true) }
+            val hostVal = hostLine?.substringAfter(":")?.trim() ?: "unknown"
+            val (h, p) = parseHostPort(hostVal, 80)
+            Triple(h, p, rawUrl)
+        }
+    }
+
+    // Thread patlamasını engelleyen ve çift yönlü I/O sağlayan optimize boru hattı
+    private fun pipeBidirectional(
+        client: Socket,
+        upstream: Socket,
+        cin: InputStream,
+        cout: OutputStream,
+        uin: InputStream,
+        uout: OutputStream
+    ) {
+        // İstemciden gelen veriyi yukarı sunucuya ileten tekil arka plan iş parçacığı
+        val uploadTask = pool.submit {
+            val buf = ByteArray(16384)
+            try {
+                var len: Int
+                while (cin.read(buf).also { len = it } != -1) {
+                    uout.write(buf, 0, len)
+                    uout.flush()
+                }
+            } catch (_: Exception) {}
+            finally {
+                try { upstream.shutdownOutput() } catch (_: Exception) {}
+            }
+        }
+
+        // Ana thread indirme (upstream -> client) için kullanılır (Ekstra thread açılmaz)
+        val downloadBuf = ByteArray(16384)
+        try {
+            var len: Int
+            while (uin.read(downloadBuf).also { len = it } != -1) {
+                cout.write(downloadBuf, 0, len)
+                cout.flush()
+            }
+        } catch (_: Exception) {}
+        finally {
+            try { client.shutdownOutput() } catch (_: Exception) {}
+        }
+
+        uploadTask.cancel(true)
     }
 
     private fun resolve(host: String): InetAddress {
         dnsCache[host]?.let { return it }
 
+        // IP literal ise doğrudan dön
+        try {
+            return InetAddress.getByName(host).also { dnsCache[host] = it }
+        } catch (_: Exception) {}
+
+        // Soket sızıntısını önlemek için .use {} kullanıldı
         return try {
             val query = createDnsQuery(host)
-            val socket = DatagramSocket()
-            socket.soTimeout = 2500
-
-            val packet = DatagramPacket(query, query.size, InetAddress.getByName("77.88.8.8"), 1253)
-            socket.send(packet)
-
             val respBuf = ByteArray(512)
             val respPacket = DatagramPacket(respBuf, respBuf.size)
-            socket.receive(respPacket)
-            socket.close()
+
+            DatagramSocket().use { socket ->
+                socket.soTimeout = 2500
+                val targetServer = InetAddress.getByAddress(byteArrayOf(77, 88, 8, 8)) // 77.88.8.8
+                val packet = DatagramPacket(query, query.size, targetServer, 1253)
+                socket.send(packet)
+                socket.receive(respPacket)
+            }
 
             val ip = parseDnsResponse(respBuf, respPacket.length) ?: InetAddress.getByName(host)
             dnsCache[host] = ip
@@ -134,8 +248,8 @@ class LocalProxyServer(
     private fun createDnsQuery(host: String): ByteArray {
         val buffer = ByteBuffer.allocate(512)
         buffer.putShort(0x1337.toShort())
-        buffer.putShort(0x0100.toShort())
-        buffer.putShort(1.toShort())
+        buffer.putShort(0x0100.toShort()) // Standart sorgu
+        buffer.putShort(1.toShort())      // 1 Soru
         buffer.putShort(0.toShort())
         buffer.putShort(0.toShort())
         buffer.putShort(0.toShort())
@@ -146,8 +260,8 @@ class LocalProxyServer(
             buffer.put(bytes)
         }
         buffer.put(0.toByte())
-        buffer.putShort(1.toShort())
-        buffer.putShort(1.toShort())
+        buffer.putShort(1.toShort()) // Type A
+        buffer.putShort(1.toShort()) // Class IN
 
         val result = ByteArray(buffer.position())
         buffer.flip()
@@ -186,41 +300,7 @@ class LocalProxyServer(
         return null
     }
 
-    private fun pipe(
-        client: Socket,
-        upstream: Socket,
-        cin: InputStream,
-        uout: OutputStream,
-        uin: InputStream,
-        cout: OutputStream
-    ) {
-        val f1 = pool.submit {
-            val buf = ByteArray(32768)
-            try {
-                var len: Int
-                while (cin.read(buf).also { len = it } != -1) {
-                    uout.write(buf, 0, len)
-                    uout.flush()
-                }
-            } catch (_: Exception) {}
-            try { upstream.shutdownOutput() } catch (_: Exception) {}
-        }
-
-        val f2 = pool.submit {
-            val buf = ByteArray(32768)
-            try {
-                var len: Int
-                while (uin.read(buf).also { len = it } != -1) {
-                    cout.write(buf, 0, len)
-                    cout.flush()
-                }
-            } catch (_: Exception) {}
-            try { client.shutdownOutput() } catch (_: Exception) {}
-        }
-
-        try {
-            f1.get()
-            f2.get()
-        } catch (_: Exception) {}
+    private fun closeQuietly(closeable: Closeable?) {
+        try { closeable?.close() } catch (_: Exception) {}
     }
 }

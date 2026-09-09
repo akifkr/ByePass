@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.network.byepass.service.TunnelService
 
 class MainActivity : ComponentActivity() {
@@ -30,7 +31,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            startService(Intent(this, TunnelService::class.java))
+            startTunnelService()
         }
     }
 
@@ -106,7 +107,7 @@ class MainActivity : ComponentActivity() {
                                     if (prep != null) {
                                         vpnPermissionLauncher.launch(prep)
                                     } else {
-                                        startService(Intent(this@MainActivity, TunnelService::class.java))
+                                        startTunnelService()
                                     }
                                 }
                             },
@@ -160,5 +161,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun startTunnelService() {
+        val intent = Intent(this, TunnelService::class.java)
+        ContextCompat.startForegroundService(this, intent)
     }
 }
