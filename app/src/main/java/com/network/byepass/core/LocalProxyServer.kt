@@ -25,12 +25,16 @@ class LocalProxyServer(
     private val dnsCache = ConcurrentHashMap<String, InetAddress>()
 
     companion object {
-        // Standard DNS port. Querying this resolver directly (instead of
-        // going through whatever the carrier/router injects on 53) is what
-        // actually sidesteps ISP-level DNS poisoning here — an unusual port
-        // number does nothing unless the resolver itself listens on it.
+        // Yandex genuinely runs a DNS resolver on this non-standard port
+        // specifically so users can dodge ISPs that transparently
+        // intercept/poison anything sent to UDP port 53, regardless of
+        // destination IP. This is the same technique documented by the
+        // GoodbyeDPI-Turkey fork (`--dns-addr 77.88.8.8 --dns-port 1253`).
+        // Do not "fix" this to port 53 — on networks that hijack port 53,
+        // that gets you the ISP's spoofed answer instead of Yandex's real
+        // one (which is exactly what caused the cert-mismatch bug earlier).
         private const val UPSTREAM_DNS_IP = "77.88.8.8"
-        private const val UPSTREAM_DNS_PORT = 53
+        private const val UPSTREAM_DNS_PORT = 1253
         private const val DNS_TIMEOUT_MS = 2500
     }
 
