@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" alt="ByePass" width="600">
+  <img src="assets/logo.png" alt="ByePass" width="200">
 </div>
 
 # ByePass
