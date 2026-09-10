@@ -13,9 +13,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F67%20Clean-brightgreen?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/44838f7fcffa676883ebab11a8f8d053364c84e8846401cfc82213b62f706f82)
 
-[İndir](https://github.com/akifkr/ByePass/releases/latest) • [VirusTotal Taraması](https://www.virustotal.com/gui/file/cdc72c586448ccb7b2b1017ad38c0a1dbc09c630c0661d0c2cd5b19520092572) • [English](#english) • [Türkçe](#türkçe)
-
-</div>
+[İndir](https://github.com/akifkr/ByePass/releases/latest) • [VirusTotal Taraması](https://www.virustotal.com/gui/file/44838f7fcffa676883ebab11a8f8d053364c84e8846401cfc82213b62f706f82) • [English](#english) • [Türkçe](#türkçe)
 
 ---
 
@@ -25,7 +23,7 @@ Uygulama cihaz üzerinde `127.0.0.1:10808`'de bir yerel proxy açıyor ve Androi
 
 - **HTTPS (CONNECT üzerinden):** TLS ClientHello paketini kayıt başlığından sonra ikiye bölüp iki ayrı TCP yazımı olarak gönderiyor. Tek paketi inceleyip SNI'ya bakan DPI cihazları hedef alan adını tam göremiyor.
 - **Düz HTTP:** `Host:` başlığını `hOSt:` yapıp isteği request-line ile Host header'ı ayrı TCP segmentlerine bölerek gönderiyor. Basit string-match yapan filtrelerin çoğu bunu yakalamıyor.
-- **DNS:** Sistem/operatör DNS'i yerine doğrudan 77.88.8.8'e (Yandex) standart 53 portundan sorgu atıyor, transaction ID'yi doğruluyor. Amaç DNS zehirlemesini/yönlendirmesini atlamak — bunun sırrı port değil, operatörün araya girdiği resolver'ı hiç kullanmamak.
+- **DNS:** Yandex'in 77.88.8.8 sunucusuna, standart 53 yerine 1253 portundan soruyor. Bu port rastgele değil — Yandex bu servisi tam olarak bazı operatörlerin hedefe bakmadan UDP 53'e giden her şeyi yakalayıp zehirlediği (poisoning) senaryoyu atlatmak için ayrıca çalıştırıyor (GoodbyeDPI-Turkey fork'unun da kullandığı yöntem bu). Cevaplar transaction ID ile doğrulanıyor; Yandex'e ulaşılamazsa sistem DNS'ine düşülüyor ve bu durum uygulama günlüğünde ayrıca belirtiliyor.
 
 Kapsam dışı: ham UDP trafiği (Discord sesli sohbet, bazı oyunların UDP paketleri) proxy'den geçmiyor, sadece TCP tabanlı web/HTTPS trafiği kapsanıyor.
 
@@ -39,7 +37,7 @@ ByePass is a small Android networking tool that fragments the outgoing TLS hands
 **What it does:**
 - Splits the TLS ClientHello right after the record header, across two TCP writes.
 - Mutates the `Host:` header (`Host:` → `hOSt:`) and fragments plain-HTTP requests the same way.
-- Resolves domains against 77.88.8.8 over standard DNS (port 53) instead of the carrier's resolver, with transaction-ID validation to reject spoofed replies.
+- Queries Yandex's 77.88.8.8 over port 1253 instead of the standard 53 — Yandex runs this specifically so it can't be swept up by ISPs that transparently hijack/poison anything sent to UDP 53 regardless of destination (the same trick used by the GoodbyeDPI-Turkey fork). Replies are checked against the query's transaction ID; if Yandex is unreachable it falls back to the system resolver and logs that fact.
 - Runs entirely on-device — no remote VPN hop, so no added latency from that.
 
 **What it doesn't do:**
@@ -49,7 +47,8 @@ ByePass is a small Android networking tool that fragments the outgoing TLS hands
 **Install:**
 1. Grab the APK from [Releases](https://github.com/akifkr/ByePass/releases/latest).
 2. Install, open the app, tap "Bypass Başlat".
-3. Android 7–9: set your Wi-Fi proxy manually to `127.0.0.1:10808`. Android 10+ does this for you.
+3. Android 7–9: set your Wi-Fi proxy manually to `127.0.0.1:10808`. Android 10+ does this for you automatically — and reverts it automatically too when you stop the tunnel.
+4. Android 7–9 only: when you're done, remove the manual Wi-Fi proxy setting yourself. Unlike Android 10+, it won't revert on its own, and leaving it set once the app is closed will block your internet access.
 
 ---
 
@@ -61,7 +60,7 @@ ByePass, root istemeden, TLS el sıkışmasını ve düz HTTP başlıklarını c
 **Ne yapıyor:**
 - TLS ClientHello'yu kayıt başlığından hemen sonra ikiye bölüp iki ayrı TCP yazımı olarak gönderiyor.
 - `Host:` başlığını `hOSt:` yapıp düz HTTP isteklerini de benzer şekilde parçalıyor.
-- 77.88.8.8'e standart 53 portundan DNS sorgusu atıyor, transaction ID kontrolü ile sahte cevapları eliyor.
+- Yandex'in 77.88.8.8 sunucusuna standart 53 yerine 1253 portundan soruyor — bu, bazı operatörlerin UDP 53'e giden trafiği hedefe bakmadan yakalayıp zehirlemesini atlatmak için Yandex'in kasıtlı olarak açtığı bir alternatif; GoodbyeDPI-Turkey fork'unun da kullandığı yöntem bu. Transaction ID kontrolü ile sahte cevaplar eleniyor; Yandex'e ulaşılamazsa sistem DNS'ine düşülüyor ve bu durum günlükte ayrıca belirtiliyor.
 - Tamamen cihaz üzerinde çalışıyor, harici sunucu yok.
 
 **Ne yapmıyor:**
@@ -71,12 +70,17 @@ ByePass, root istemeden, TLS el sıkışmasını ve düz HTTP başlıklarını c
 **Kurulum:**
 1. [Releases](https://github.com/akifkr/ByePass/releases/latest) sayfasından apk'yı indir.
 2. Kur, aç, "Bypass Başlat"a bas.
-3. Android 7–9 kullananlar Wi-Fi proxy ayarını manuel olarak `127.0.0.1:10808` yapsın. Android 10+'ta bu otomatik.
+3. Android 7–9 kullananlar Wi-Fi proxy ayarını manuel olarak `127.0.0.1:10808` yapsın. Android 10+'ta bu otomatik yapılır — tüneli durdurunca da otomatik geri alınır.
+4. Sadece Android 7–9: işiniz bitince manuel Wi-Fi proxy ayarını **elle kaldırın**. Android 10+'ın aksine bu kendiliğinden geri dönmez; uygulamayı kapattıktan sonra ayarı öylece bırakırsanız internetiniz kesilir.
+
+---
+
+## Geri bildirim / sorun bildirme
+
+Bir site açılmıyorsa, uygulama çöküyorsa ya da beklenmedik bir davranış görüyorsanız lütfen [Issues](https://github.com/akifkr/ByePass/issues) sekmesinden bildirin. Mümkünse Android sürümünüzü, operatörünüzü ve uygulama içindeki günlük (log) çıktısını da eklemeniz sorunu çözmemi çok kolaylaştırır.
 
 ---
 
 ## Lisans
 [MIT](https://opensource.org/licenses/MIT). Araştırma, test ve eğitim amaçlı geliştirildi.
-
----
 
