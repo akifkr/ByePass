@@ -1,4 +1,6 @@
 <div align="center">
+  <img src="assets/logo.png" alt="ByePass" width="200">
+</div>
 
 # ByePass
 
@@ -9,7 +11,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%207.0%2B-blue?logo=android&logoColor=white)](https://github.com/akifkr/ByePass)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin%20100%25-7F52FF?logo=kotlin&logoColor=white)](https://github.com/akifkr/ByePass)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F67%20Clean-brightgreen?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/c97f2818af951a8a23917fcd74c9738e072c3c63daeb3521cde3811b8da0e057)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F67%20Clean-brightgreen?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/5b24b18b4e6e393b689bbfb152dc70fbc35080f514a42277b6821b34ac38b719)
 
 [İndir](https://github.com/akifkr/ByePass/releases/latest) • [VirusTotal Taraması](https://www.virustotal.com/gui/file/cdc72c586448ccb7b2b1017ad38c0a1dbc09c630c0661d0c2cd5b19520092572) • [English](#english) • [Türkçe](#türkçe)
 
