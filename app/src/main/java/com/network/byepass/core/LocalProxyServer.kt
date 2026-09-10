@@ -240,6 +240,7 @@ class LocalProxyServer(
         } catch (_: Exception) {
             val fallback = InetAddress.getByName(host)
             dnsCache[host] = fallback
+            TunnelService.log("Uyarı: $host için Yandex DNS'e ulaşılamadı, sistem DNS'ine düşüldü")
             fallback
         } finally {
             try { socket?.close() } catch (_: Exception) {}
